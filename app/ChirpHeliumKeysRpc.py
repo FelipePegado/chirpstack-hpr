@@ -135,7 +135,7 @@ class ChirpDeviceKeys:
             (d["devaddr"], d["sessionKey"]) for d in skfs_list
         }
 
-        devices_to_remove = all_helium_sessions_set ^ all_skfs_sessions_set
+        devices_to_remove = all_skfs_sessions_set - all_helium_sessions_set
         logging.info(f"Devices_to_remove: {devices_to_remove}")
 
         # only update max_copies if changed, do not remove and re add if only max copies changes
