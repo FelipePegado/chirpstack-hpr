@@ -62,6 +62,7 @@ async def main():
 
     skfs_int = 60 * 5   # 5 minutes
     device_int = 60 * 5  # 5 minutes
+    euis_int = 60 * 5  # 5 minutes
 
     await client_streams.create_tables()
 
@@ -74,6 +75,8 @@ async def main():
                              'update_device_status'),
             run_periodically(client_keys.helium_skfs_update, skfs_int,
                              'helium_skfs_update'),
+            run_periodically(client_keys.helium_euis_update, euis_int,
+                             'helium_euis_update'),
         )
     finally:
         await db.close()

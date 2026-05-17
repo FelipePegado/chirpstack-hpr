@@ -140,3 +140,44 @@ async def update_device_skfs(route_id: str, skfs_action: list):
         req.signature = delegate_keypair.sign(req.SerializeToString())
         resp = await service.update_skfs(req)
     return ujson.dumps(resp.to_dict(), indent=2)
+
+
+@my_logger
+async def get_route_euis() -> list[tuple]:
+    async with Channel(host, port) as channel:
+        service = iot_config.RouteStub(channel)
+        req = iot_config.RouteGetEuisReqV1(
+            route_id=route_id,
+            timestamp=rpc_time(PRECISION),
+            signer=delegate_keypair.address.bin
+        )
+        req.signature = delegate_keypair.sign(req.SerializeToString())
+        all_euis = []
+        async for eui in service.get_euis(req):
+            all_euis.append((eui.app_eui, eui.dev_eui))
+    return all_euis
+
+
+@my_logger
+async def update_route_euis(route_id: str, eui_actions: list):
+    """ Batch device EUI update.
+        eui_actions: list -> [(action: int, app_eui: int, dev_eui: int), ...]
+    """
+    reqs = []
+    for action, app_eui, dev_eui in eui_actions:
+        req = iot_config.RouteUpdateEuisReqV1(
+            action=iot_config.ActionV1(action),
+            eui_pair=iot_config.EuiPairV1(
+                route_id=route_id,
+                app_eui=app_eui,
+                dev_eui=dev_eui
+            ),
+            timestamp=rpc_time(PRECISION),
+            signer=delegate_keypair.address.bin
+        )
+        req.signature = delegate_keypair.sign(req.SerializeToString())
+        reqs.append(req)
+    async with Channel(host, port) as channel:
+        service = iot_config.RouteStub(channel)
+        resp = await service.update_euis(reqs)
+    return ujson.dumps(resp.to_dict(), indent=2)

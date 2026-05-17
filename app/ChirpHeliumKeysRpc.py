@@ -3,7 +3,12 @@ from google.protobuf.json_format import MessageToDict
 from chirpstack_api import api
 import logging
 
-from ChirpHeliumCrypto import get_route_skfs, update_device_skfs
+from ChirpHeliumCrypto import (
+    get_route_skfs,
+    update_device_skfs,
+    get_route_euis,
+    update_route_euis,
+)
 from protos.helium import iot_config
 
 
@@ -187,3 +192,45 @@ class ChirpDeviceKeys:
                 logging.info(f'skfs_to_update: {skfs_update_chunk}')
 
         return "Updated SKFS"
+
+    async def helium_euis_update(self):
+        """
+        Reconcile device EUIs between the helium_devices table and the HPR
+        route. Acts as a safety net for add/disable events that were missed
+        or failed to reach the router.
+        """
+        helium_devices = """
+            SELECT dev_eui, join_eui
+            FROM helium_devices
+            WHERE is_disabled=false
+            AND join_eui != '';
+        """
+        all_helium_devices = await self.db_fetch(helium_devices)
+
+        # join_eui maps to the app_eui field of the route EuiPair.
+        local_euis_set = {
+            (int(d["join_eui"], 16), int(d["dev_eui"], 16))
+            for d in all_helium_devices
+        }
+
+        route_euis_set = set(await get_route_euis())
+
+        euis_to_remove = route_euis_set - local_euis_set
+        euis_to_add = local_euis_set - route_euis_set
+        logging.info(f"Euis_to_remove: {euis_to_remove}")
+        logging.info(f"Euis_to_add: {euis_to_add}")
+
+        eui_actions = [
+            (1, app_eui, dev_eui) for app_eui, dev_eui in euis_to_remove
+        ] + [
+            (0, app_eui, dev_eui) for app_eui, dev_eui in euis_to_add
+        ]
+
+        if eui_actions:
+            """Chunk updates max of 100 requests at a time, helium rpc restriction"""
+            for group in self.chunker(eui_actions, 100):
+                logging.info(f'Chunked_Eui_Update: {group}')
+                euis_update_chunk = await update_route_euis(self.route_id, group)
+                logging.info(f'euis_to_update: {euis_update_chunk}')
+
+        return "Updated EUIS"
